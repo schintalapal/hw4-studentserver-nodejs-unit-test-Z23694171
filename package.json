@@ -4,7 +4,7 @@
   "description": "",
   "main": "studentserver.js",
   "scripts": {
-    "test": "jest --detectOpenHandles",
+    "test": "jest --coverage",
     "start": "node studentserver.js"
   },
   "dependencies": {
