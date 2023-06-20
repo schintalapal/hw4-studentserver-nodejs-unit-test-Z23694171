@@ -61,7 +61,6 @@ describe('GET /students', () => {
     })
 });
 
-// describe('GET /students', () => {
 describe("GET /students/{record_id}", () => {
     var response
 

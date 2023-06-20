@@ -3,8 +3,11 @@
 const express = require('express')
 const app = express()
 const bodyParser = require('body-parser');
-const fs = require('fs');
 const glob = require("glob");
+
+const fg = require("fast-glob");
+const fs = require("fs/promises");
+// const fs = require("fs");
 const { type } = require('os');
 
 const swaggerJsDoc = require('swagger-jsdoc')
@@ -31,6 +34,43 @@ app.use((req, res, next) => {
   res.set('Content-Type', 'application/json');
   next();
 });
+
+// check to see if student directory exists and create if necessary
+const dir = 'students';
+fs.access(dir)
+  .then(() => {
+    console.log("Student directory already exists!");
+  })
+  .catch(() => {
+    fs.mkdir(dir, { mode: 0o755 })
+      .then(() => {
+        console.log("Student directory created successfully!");
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+  });
+
+async function checkStudentExists(fname, lname, res) {
+  try {
+    console.log("checkStudentExists");
+    const files = await fg("students/*.json");
+
+    for (let index in files) {
+      const data = await fs.readFile(files[index], "utf8");
+      const student = JSON.parse(data);
+
+      if (student.first_name === fname && student.last_name === lname) {
+        return true;
+      }
+    }
+    return false;  // duplicate was not found
+  } catch (err) {
+    console.log("Error 500: ", err.stack)
+    return res.status(500).send({ "message": "error - internal server error" });
+  }
+}
+
 
 /**
  * @swagger
@@ -69,58 +109,41 @@ app.use((req, res, next) => {
  *       201:
  *         description: Success. The student object has been created.
  */
-app.post('/students', function (req, res) {//creates a new student obj with all of it's attributes.
 
-  var record_id = new Date().getTime();
+app.post('/students', async function (req, res) {
+  const record_id = new Date().getTime();
+  const obj = {
+    record_id: record_id,
+    first_name: req.body.first_name,
+    last_name: req.body.last_name,
+    gpa: req.body.gpa,
+    enrolled: req.body.enrolled
+  };
+  const str = JSON.stringify(obj, null, 2);
+  const rsp_obj = {};
 
-  var obj = {};
-  obj.record_id = record_id;
-  obj.first_name = req.body.first_name;
-  obj.last_name = req.body.last_name;
-  obj.gpa = req.body.gpa;
-  obj.enrolled = req.body.enrolled;
+  const check = await checkStudentExists(obj.first_name, obj.last_name, res);
 
-  var str = JSON.stringify(obj, null, 2);
-  const fs = require('fs');
-
-  const dir = 'students';
-
-  fs.access(dir, (err) => {
-    if (err) {
-      fs.mkdir(dir, (err) => {
-        if (err) {
-          console.error(err);
-        } else {
-          console.log('Directory created successfully!');
-        }
-      });
-    } else {
-      console.log('Directory already exists!');
-    }
-
-    var rsp_obj = {};
-    if (await checkStudentExists(obj.first_name, obj.last_name, res) == false) {
-      fs.writeFile("students/" + record_id + ".json", str, function (err) {//writes to the students directory
-        if (err) {
-          rsp_obj.record_id = -1;
-          rsp_obj.message = 'error - unable to create resource';
-          return res.status(404).send(rsp_obj);
-        } else {
-          rsp_obj.record_id = record_id;
-          rsp_obj.message = 'successfully created';
-          return res.status(201).send(rsp_obj);
-        }
-      }) //end writeFile method
-    } else {
-      console.log("Student exists")
+  if (!check) {
+    try {
+      await fs.writeFile(`students/${record_id}.json`, str);
+      rsp_obj.record_id = record_id;
+      rsp_obj.message = 'successfully created';
+      return res.status(201).send(rsp_obj);
+    } catch (err) {
       rsp_obj.record_id = -1;
-      rsp_obj.message = 'error - student already exists';
-      return res.status(409).send(rsp_obj);
+      rsp_obj.message = 'error - unable to create resource';
+      return res.status(404).send(rsp_obj);
     }
-  })
+  } else {
+    console.log("Student exists");
+    rsp_obj.record_id = -1;
+    rsp_obj.message = 'error - student already exists';
+    return res.status(409).send(rsp_obj);
+  }
+});
 
 
-}); //end post method
 /**
  * @swagger
  * /students/{recordid}:
@@ -375,30 +398,30 @@ app.delete('/students/:record_id', function (req, res) {
 
 }); //end delete method
 
-function checkStudentExists(fname, lname, res) {
-  console.log("checkStudentExists")
-  glob("students/*.json", null, function (err, files) {
-    if (err) {
-      return res.status(500).send({ "message": "error - internal server error" });
-    }
-    for (let index in files) {
-      fs.readFile(files[index], "utf8", function (err, data) {
-        if (err) {
-          return res.status(500).send({ "message": "error - internal server error" });
-        }
-        student = JSON.parse(data);
-        if (student.first_name === fname && student.last_name === lname) {
-          return true;
-        }
-      })
-    }
-    return false;  // duplicate was not found
-  });
-}
+// function checkStudentExists(fname, lname, res) {
+//   console.log("checkStudentExists")
+//   glob("students/*.json", null, function (err, files) {
+//     if (err) {
+//       return res.status(500).send({ "message": "error - internal server error" });
+//     }
+//     for (let index in files) {
+//       fs.readFile(files[index], "utf8", function (err, data) {
+//         if (err) {
+//           return res.status(500).send({ "message": "error - internal server error" });
+//         }
+//         student = JSON.parse(data);
+//         if (student.first_name === fname && student.last_name === lname) {
+//           return true;
+//         }
+//       })
+//     }
+//     return false;  // duplicate was not found
+//   });
+// }
 
+const PORT = 5678
 const server = app.listen(5678); //start the server
-//console.log(checkStudentExists("John","Doe",))
-console.log('Server is running...');
+console.log(`Server is running... http://localhost:${PORT}`);
 
 module.exports = {
   server: server,
