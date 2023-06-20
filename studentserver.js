@@ -97,13 +97,14 @@ app.post('/students', function (req, res) {//creates a new student obj with all 
     } else {
       console.log('Directory already exists!');
     }
-    if (checkStudentExists() == false) {
+
+    var rsp_obj = {};
+    if (await checkStudentExists(obj.first_name, obj.last_name, res) == false) {
       fs.writeFile("students/" + record_id + ".json", str, function (err) {//writes to the students directory
-        var rsp_obj = {};
         if (err) {
           rsp_obj.record_id = -1;
           rsp_obj.message = 'error - unable to create resource';
-          return res.status(200).send(rsp_obj);
+          return res.status(404).send(rsp_obj);
         } else {
           rsp_obj.record_id = record_id;
           rsp_obj.message = 'successfully created';
@@ -112,6 +113,9 @@ app.post('/students', function (req, res) {//creates a new student obj with all 
       }) //end writeFile method
     } else {
       console.log("Student exists")
+      rsp_obj.record_id = -1;
+      rsp_obj.message = 'error - student already exists';
+      return res.status(409).send(rsp_obj);
     }
   })
 
@@ -237,7 +241,6 @@ app.get('/students', function (req, res) {
   console.log("get students")
   var obj = {};
   var arr = [];
-  filesread = 0;
 
   glob("students/*.json", null, function (err, files) {
     if (err) {
@@ -372,17 +375,25 @@ app.delete('/students/:record_id', function (req, res) {
 
 }); //end delete method
 
-function checkStudentExists(files, obj, fname, lname, res) {
+function checkStudentExists(fname, lname, res) {
   console.log("checkStudentExists")
-  listOfStudents = obj;
-  for (let recordId in listOfStudents) {
-    let student = listOfStudents[recordId];
-    if (student.first_name === firstName && student.last_name === lastName) {
-      return true;
+  glob("students/*.json", null, function (err, files) {
+    if (err) {
+      return res.status(500).send({ "message": "error - internal server error" });
     }
-  }
-  return false;
-
+    for (let index in files) {
+      fs.readFile(files[index], "utf8", function (err, data) {
+        if (err) {
+          return res.status(500).send({ "message": "error - internal server error" });
+        }
+        student = JSON.parse(data);
+        if (student.first_name === fname && student.last_name === lname) {
+          return true;
+        }
+      })
+    }
+    return false;  // duplicate was not found
+  });
 }
 
 const server = app.listen(5678); //start the server
